@@ -38,6 +38,7 @@ class MainActivity : AppCompatActivity(), OnGoToLocationStatusChangedListener, O
         super.onStart()
         app.robot.addOnGoToLocationStatusChangedListener(this)
         app.robot.addOnGreetModeStateChangedListener(this)
+        app.robot.hideTopBar(true)
     }
 
     override fun onStop() {
