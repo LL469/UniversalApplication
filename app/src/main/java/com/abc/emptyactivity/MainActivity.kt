@@ -11,19 +11,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.robotemi.sdk.BatteryData
+import com.robotemi.sdk.TtsRequest
 import com.robotemi.sdk.listeners.OnBatteryStatusChangedListener
 import com.robotemi.sdk.listeners.OnGoToLocationStatusChangedListener
+import com.robotemi.sdk.listeners.OnGreetModeStateChangedListener
 
-class MainActivity : AppCompatActivity(), OnGoToLocationStatusChangedListener, OnBatteryStatusChangedListener {
+class MainActivity : AppCompatActivity(), OnGoToLocationStatusChangedListener, OnGreetModeStateChangedListener {
 
     lateinit var app: MyApplication
-
-    lateinit var bControl: Button
-    lateinit var tvBattery: TextView
-    lateinit var tvLoop: TextView
-    lateinit var tvDescription: TextView
-    lateinit var tvLocation: TextView
-    lateinit var tvClock: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,63 +32,39 @@ class MainActivity : AppCompatActivity(), OnGoToLocationStatusChangedListener, O
 
         app = application as MyApplication
 
-        bControl = findViewById(R.id.bControl)
-        tvBattery = findViewById(R.id.tvBattery)
-        tvLoop = findViewById(R.id.tvLoop)
-        tvDescription = findViewById(R.id.tvDescription)
-        tvLocation = findViewById(R.id.tvLocation)
-        tvClock = findViewById(R.id.tvClock)
-
-        bControl.text = if (app.isRunning) "Stop" else "Start"
     }
 
     override fun onStart() {
         super.onStart()
         app.robot.addOnGoToLocationStatusChangedListener(this)
-        app.robot.addOnBatteryStatusChangedListener(this)
+        app.robot.addOnGreetModeStateChangedListener(this)
     }
 
     override fun onStop() {
         super.onStop()
         app.robot.removeOnGoToLocationStatusChangedListener(this)
-        app.robot.removeOnBatteryStatusChangedListener(this)
+        app.robot.removeOnGreetModeStateChangedListener(this)
     }
 
-    private fun start() {
-        if (!app.isRunning) {
-            app.startTime = SystemClock.elapsedRealtime()
-            app.isRunning = true
-            app.robot.batteryData?.let {
-                tvBattery.text = "🔋: ${it.level}%"
-            }
-        }
-        app.robot.patrol(app.locations, true, 0)
-        log("start")
-        bControl.text = "Stop"
-    }
+    fun randomPlace(): String {
+        val listLength = app.eligiblePlaces.size
+        val randomLocation = (1..listLength).random()
 
-    private fun stop() {
-        if (app.isRunning) {
-            app.passedTime += SystemClock.elapsedRealtime() - app.startTime
-            app.isRunning = false
-        }
-        app.robot.stopMovement()
-        log("stop")
-        bControl.text = "Start"
-    }
-
-    fun bControlOnClick(view: View) {
-        if (app.isRunning) {
-            stop()
+        return if (kotlin.math.abs(randomLocation - app.previousLocation) <= 1) {
+            randomPlace()
         } else {
-            start()
+            app.eligiblePlaces.entries
+                .first { it.value == randomLocation }
+                .key
         }
     }
 
-    private fun updateVariables() {
-        app.loopIndex += 1
-        tvLoop.text = "🔄: ${app.loopIndex}"
-        log("loop " + app.loopIndex.toString())
+    fun returnRandomSentence(): Int {
+        return app.speechSentences.indices.random()
+    }
+
+    fun route() {
+        app.robot.goTo(randomPlace())
     }
 
     override fun onGoToLocationStatusChanged(
@@ -102,28 +73,30 @@ class MainActivity : AppCompatActivity(), OnGoToLocationStatusChangedListener, O
         descriptionId: Int,
         description: String
     ) {
-        if (status == "complete") {
-            if (location == app.locations.lastOrNull()) {
-                updateVariables()
+        when (status) {
+            "complete", "abort" -> {
+                app.previousLocation = app.eligiblePlaces[location]!!
+
+                if (app.greetStatus != 4) {
+                    route()
+                }
             }
+            else -> {
 
-        }
-
-        tvLocation.text = "📌: ${location}"
-        val totalSeconds = app.getTotalPassedTime() / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        tvClock.text = "⏱️: %02d:%02d".format(minutes, seconds)
-    }
-
-    override fun onBatteryStatusChanged(batteryData: BatteryData?) {
-        batteryData?.let {
-            tvBattery.text = "🔋: ${it.level}%"
-            log("battery " + it.level.toString())
+            }
         }
     }
 
-    fun log(message: String) {
-        Log.d("Mine", message)
+    override fun onGreetModeStateChanged(state: Int) {
+        app.greetStatus = state
+        when (state) {
+            1 -> {
+                route()
+            }
+            4 -> app.speak(app.speechSentences[returnRandomSentence()], TtsRequest.Language.ET_EE)
+            else -> {
+
+            }
+        }
     }
 }
